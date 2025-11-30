@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+__.venv/
+NanoBilder/
+NanoBilder_Batch/
+my_generated_images/
+temp_*.jsonl
