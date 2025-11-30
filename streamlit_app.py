@@ -8,6 +8,9 @@ from PIL import Image
 from io import BytesIO
 from dotenv import load_dotenv
 import re
+import zipfile
+
+# --- KONFIGURATION ---
 
 # --- KONFIGURATION ---
 OUTPUT_FOLDER = "NanoBilder_Batch"
@@ -191,6 +194,18 @@ def process_downloaded_content(text_content, job_id):
             pass
     return images
 
+def create_zip_of_folder(folder_path):
+    """Erstellt ein ZIP-Archiv im Speicher aus einem Ordner."""
+    memory_file = BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(folder_path):
+            for file in files:
+                if file.endswith(".png"):
+                    file_path = os.path.join(root, file)
+                    zf.write(file_path, os.path.basename(file_path))
+    memory_file.seek(0)
+    return memory_file
+
 # --- UI ---
 
 st.title("🎨 Etsy Junk Journal Generator")
@@ -313,4 +328,22 @@ with tab2:
                     images = [os.path.join(job_dir, f) for f in os.listdir(job_dir) if f.endswith(".png")]
                     if images:
                         st.write(f"📸 {len(images)} Bilder verfügbar:")
-                        st.image(images, width=200)
+                        
+                        # 1. Download Button für alle
+                        zip_data = create_zip_of_folder(job_dir)
+                        st.download_button(
+                            label="📦 Alle Bilder als ZIP herunterladen",
+                            data=zip_data,
+                            file_name=f"images_{clean_id}.zip",
+                            mime="application/zip",
+                            type="primary"
+                        )
+                        
+                        # 2. Galerie (Grid Layout)
+                        cols = st.columns(3) # 3 Bilder pro Reihe
+                        for idx, img_path in enumerate(images):
+                            with cols[idx % 3]:
+                                st.image(img_path, use_container_width=True)
+                                # Optional: Einzeldownload
+                                # with open(img_path, "rb") as file:
+                                #     st.download_button("⬇️", file, file_name=os.path.basename(img_path), key=f"dl_{clean_id}_{idx}")
