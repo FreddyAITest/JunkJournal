@@ -9,9 +9,6 @@ from io import BytesIO
 from dotenv import load_dotenv
 import re
 import zipfile
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
 
 # --- KONFIGURATION ---
 
@@ -209,55 +206,6 @@ def create_zip_of_folder(folder_path):
     memory_file.seek(0)
     return memory_file
 
-def upload_to_drive(folder_path, folder_name):
-    """Lädt einen Ordner zu Google Drive hoch."""
-    try:
-        # Authentifizierung aus Streamlit Secrets
-        gcp_service_account = st.secrets["gcp_service_account"]
-        creds = service_account.Credentials.from_service_account_info(
-            gcp_service_account, scopes=["https://www.googleapis.com/auth/drive"]
-        )
-        service = build('drive', 'v3', credentials=creds)
-
-        # 1. Hauptordner suchen (AI_Junk_Journal_Images)
-        query = "name = 'AI_Junk_Journal_Images' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-        results = service.files().list(q=query, fields="files(id)").execute()
-        items = results.get('files', [])
-        
-        if not items:
-            return False, "Hauptordner 'AI_Junk_Journal_Images' nicht gefunden. Bitte erstelle ihn und teile ihn mit dem Service Account."
-        
-        parent_id = items[0]['id']
-
-        # 2. Unterordner für diesen Job erstellen
-        file_metadata = {
-            'name': folder_name,
-            'mimeType': 'application/vnd.google-apps.folder',
-            'parents': [parent_id]
-        }
-        folder = service.files().create(body=file_metadata, fields='id').execute()
-        folder_id = folder.get('id')
-
-        # 3. Bilder hochladen
-        uploaded_count = 0
-        for root, dirs, files in os.walk(folder_path):
-            for file in files:
-                if file.endswith(".png"):
-                    file_path = os.path.join(root, file)
-                    
-                    file_metadata = {
-                        'name': file,
-                        'parents': [folder_id]
-                    }
-                    media = MediaIoBaseUpload(open(file_path, 'rb'), mimetype='image/png')
-                    service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-                    uploaded_count += 1
-                    
-        return True, f"{uploaded_count} Bilder erfolgreich hochgeladen!"
-
-    except Exception as e:
-        return False, str(e)
-
 # --- UI ---
 
 st.title("🎨 Etsy Junk Journal Generator")
@@ -382,27 +330,17 @@ with tab2:
                         st.write(f"📸 {len(images)} Bilder verfügbar:")
                         
                         # 1. Download Button für alle
-                        col_dl, col_drive = st.columns([1, 1])
-                        
                         zip_data = create_zip_of_folder(job_dir)
-                        col_dl.download_button(
-                            label="📦 ZIP herunterladen",
+                        st.download_button(
+                            label="📦 Alle Bilder als ZIP herunterladen",
                             data=zip_data,
                             file_name=f"images_{clean_id}.zip",
                             mime="application/zip",
-                            type="primary"
+                            type="primary",
+                            key=f"zip_btn_{clean_id}"
                         )
                         
-                        # 2. Google Drive Upload
-                        if col_drive.button("☁️ Zu Google Drive senden"):
-                            with st.spinner("Lade hoch..."):
-                                success, msg = upload_to_drive(job_dir, f"{job.get('theme', 'Batch')} - {clean_id}")
-                                if success:
-                                    st.success(msg)
-                                else:
-                                    st.error(f"Fehler: {msg}")
-                        
-                        # 3. Galerie (Grid Layout)
+                        # 2. Galerie (Grid Layout)
                         cols = st.columns(3) # 3 Bilder pro Reihe
                         for idx, img_path in enumerate(images):
                             with cols[idx % 3]:
