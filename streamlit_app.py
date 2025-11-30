@@ -206,11 +206,40 @@ def create_zip_of_folder(folder_path):
     memory_file.seek(0)
     return memory_file
 
+def convert_to_a4(image):
+    """Konvertiert ein Bild zu DIN A4 (300 DPI) mittels Lanczos-Filter."""
+    # A4 bei 300 DPI
+    A4_WIDTH = 2480
+    A4_HEIGHT = 3508
+    
+    target_ratio = A4_WIDTH / A4_HEIGHT
+    img_ratio = image.width / image.height
+    
+    # 1. Skalieren (Aspect Ratio beibehalten, so dass es A4 füllt)
+    if img_ratio > target_ratio:
+        # Bild ist breiter als A4 -> Höhe anpassen
+        new_height = A4_HEIGHT
+        new_width = int(new_height * img_ratio)
+    else:
+        # Bild ist schmaler als A4 -> Breite anpassen
+        new_width = A4_WIDTH
+        new_height = int(new_width / img_ratio)
+        
+    resized_img = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    
+    # 2. Center Crop auf exakt A4
+    left = (new_width - A4_WIDTH) / 2
+    top = (new_height - A4_HEIGHT) / 2
+    right = (new_width + A4_WIDTH) / 2
+    bottom = (new_height + A4_HEIGHT) / 2
+    
+    return resized_img.crop((left, top, right, bottom))
+
 # --- UI ---
 
 st.title("🎨 Etsy Junk Journal Generator")
 
-tab1, tab2 = st.tabs(["🚀 Neuen Batch starten", "📂 Meine Batches & Bilder"])
+tab1, tab2, tab3 = st.tabs(["🚀 Neuen Batch starten", "📂 Meine Batches & Bilder", "🖨️ Druck-Vorbereitung (A4)"])
 
 with tab1:
     st.header("Neues Set erstellen")
@@ -345,6 +374,52 @@ with tab2:
                         for idx, img_path in enumerate(images):
                             with cols[idx % 3]:
                                 st.image(img_path, use_container_width=True)
+
+with tab3:
+    st.header("🖨️ Bilder für Druck vorbereiten (DIN A4)")
+    st.write("Lade deine Favoriten hoch. Sie werden automatisch auf **DIN A4 (300 DPI)** hochskaliert und zugeschnitten.")
+    
+    uploaded_files = st.file_uploader("Bilder auswählen", accept_multiple_files=True, type=['png', 'jpg', 'jpeg'])
+    
+    if uploaded_files:
+        if st.button(f"✨ {len(uploaded_files)} Bilder konvertieren"):
+            progress_bar = st.progress(0)
+            processed_images = []
+            
+            # Temp Ordner für ZIP
+            timestamp = int(time.time())
+            upscale_folder = f"Upscaled_A4_{timestamp}"
+            os.makedirs(upscale_folder, exist_ok=True)
+            
+            for i, uploaded_file in enumerate(uploaded_files):
+                # Laden
+                image = Image.open(uploaded_file)
+                
+                # Konvertieren
+                a4_image = convert_to_a4(image)
+                
+                # Speichern
+                save_path = os.path.join(upscale_folder, f"A4_{uploaded_file.name}")
+                a4_image.save(save_path, quality=95)
+                processed_images.append(save_path)
+                
+                progress_bar.progress((i + 1) / len(uploaded_files))
+            
+            st.success("Fertig!")
+            
+            # ZIP erstellen
+            zip_data = create_zip_of_folder(upscale_folder)
+            st.download_button(
+                label="📦 Alle A4-Bilder herunterladen (ZIP)",
+                data=zip_data,
+                file_name=f"A4_Print_Ready_{timestamp}.zip",
+                mime="application/zip",
+                type="primary"
+            )
+            
+            # Aufräumen (Ordner löschen)
+            import shutil
+            shutil.rmtree(upscale_folder)
                                 # Optional: Einzeldownload
                                 # with open(img_path, "rb") as file:
                                 #     st.download_button("⬇️", file, file_name=os.path.basename(img_path), key=f"dl_{clean_id}_{idx}")
